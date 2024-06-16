@@ -1,3 +1,4 @@
+from urllib.parse import urlparse
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
@@ -95,3 +96,12 @@ def get_clean_safe_results(facts_op,model):
                      
                      }
    return { key : cleaned_result[key].answer for key in cleaned_result.keys() }
+
+# Define helper functions
+def is_valid_url(url):
+    parsed = urlparse(url)
+    return bool(parsed.scheme) and bool(parsed.netloc)
+
+def is_text_length_valid(text, min_length=10):  # minimum length can be adjusted
+    return len(text) >= min_length
+

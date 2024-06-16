@@ -14,7 +14,7 @@ from eval.safe.rate_atomic_fact import check_atomic_fact
 from eval.safe.classify_relevance import revise_fact
 from common.modeling import Model
 
-from streamlit_app_helper import run_safe, extract_text_from_url, clean_text, get_clean_safe_results
+from streamlit_app_helper import run_safe, extract_text_from_url, clean_text, get_clean_safe_results, is_valid_url, is_text_length_valid
 
 from collections import defaultdict
 import os
@@ -47,7 +47,7 @@ typed_text = ""
 with url_section:
     url = st.text_input('Enter URL of the website')
     if st.button('Extract Text'):
-        if url:
+        if url and is_valid_url(url):
             extracted_text = extract_text_from_url(url)
             extracted_text = extracted_text[:100]
             st.session_state['input_text'] = extracted_text
@@ -55,7 +55,7 @@ with url_section:
             st.session_state['output_text'] = get_clean_safe_results(facts_op, model)
             st.experimental_rerun()
         else:
-            st.error('Please enter a URL')
+            st.error('Please enter a valid URL')
 
 # Customer Text Entering section
 with text_entry_section:
@@ -73,13 +73,13 @@ with text_entry_section:
 with text_typing_section:
     typed_text = st.text_area('Type your text here')
     if st.button('Submit Typed Text'):
-        if typed_text:
+        if typed_text and is_text_length_valid(typed_text):
             st.session_state['input_text']  = typed_text
             facts_op = get_atomic_facts.main(typed_text, model)
             st.session_state['output_text'] = get_clean_safe_results(facts_op, model)
             st.experimental_rerun()
         else:
-            st.error('Please enter text')
+            st.error('Please enter text with sufficient length')
 # Display output text
 if 'output_text' in st.session_state:
     st.header('Input Text')
