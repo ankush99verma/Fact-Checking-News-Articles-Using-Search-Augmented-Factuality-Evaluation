@@ -3,6 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import pandas as pd
+import time  # Import the time module
 
 from common.shared_config import openai_api_key
 from common.shared_config import serper_api_key
@@ -62,10 +63,24 @@ with text_entry_section:
     entered_text = st.text_area('Paste your text here')
     if st.button('Submit Pasted Text'):
         if entered_text:
+            start_time = time.time()  # Start timing
+
             st.session_state['input_text'] = entered_text
+            text_set_time = time.time()  # Time after setting text
+            print(f"Time to set text: {text_set_time - start_time:.2f} seconds")
+
             facts_op = get_atomic_facts.main(entered_text, model)
+            facts_time = time.time()  # Time after getting facts
+            print(f"Time to get atomic facts: {facts_time - text_set_time:.2f} seconds")
+
             st.session_state['output_text'] = get_clean_safe_results(facts_op, model)
+            clean_results_time = time.time()  # Time after cleaning results
+            print(f"Time to clean results: {clean_results_time - facts_time:.2f} seconds")
+
             st.experimental_rerun()
+            rerun_time = time.time()  # Time after rerun
+            print(f"Time to rerun: {rerun_time - clean_results_time:.2f} seconds")
+
         else:
             st.error('Please enter text')
 

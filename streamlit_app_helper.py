@@ -3,6 +3,8 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import defaultdict
 
 from common.shared_config import openai_api_key
 from common.shared_config import serper_api_key
@@ -72,20 +74,20 @@ def extract_text_from_url(url):
 
 
 def run_safe(facts_op, model):
-   result_dict = defaultdict(dict)
-   for sent_id in range(len(facts_op['all_atomic_facts'])):
-      sentence_data = facts_op['all_atomic_facts'][sent_id]
-      sentence = sentence_data['sentence']
-      for atomic_fact in sentence_data['atomic_facts']:
-         revised_fact , atomic_fact2 = revise_fact(
-            response=sentence, atomic_fact=atomic_fact, model=model
-            )
-         rate_data, past_steps_dict = check_atomic_fact(
-            atomic_fact=revised_fact, rater=model
-            )
-         result_dict[sent_id][atomic_fact] = {'rate_data': rate_data, 'past_steps_dict':past_steps_dict }
-   return result_dict
+    result_dict = defaultdict(dict)
+    futures = []
 
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        for sent_id, sentence_data in enumerate(facts_op['all_atomic_facts']):
+            for atomic_fact in sentence_data['atomic_facts']:
+                future = executor.submit(process_fact, sentence_data['sentence'], atomic_fact, model)
+                futures.append((sent_id, atomic_fact, future))
+    
+        for sent_id, atomic_fact, future in futures:
+            rate_data, past_steps_dict = future.result()
+            result_dict[sent_id][atomic_fact] = {'rate_data': rate_data, 'past_steps_dict': past_steps_dict}
+    
+    return result_dict
 
 def get_clean_safe_results(facts_op,model):
    result_dict = run_safe(facts_op, model)
@@ -95,7 +97,11 @@ def get_clean_safe_results(facts_op,model):
                      for atomic_fact in facts_op['all_atomic_facts'][sent_id]['atomic_facts']
                      
                      }
-   return { key : cleaned_result[key].answer for key in cleaned_result.keys() }
+   return {key: cleaned_result[key].answer if cleaned_result[key] is not None else None for key in cleaned_result.keys()}
+
+def process_fact(sentence, atomic_fact, model):
+    revised_fact, _ = revise_fact(response=sentence, atomic_fact=atomic_fact, model=model)
+    return check_atomic_fact(atomic_fact=revised_fact, rater=model)
 
 # Define helper functions
 def is_valid_url(url):
