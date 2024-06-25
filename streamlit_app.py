@@ -3,6 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import pandas as pd
+import time  # Import the time module
 
 from common.shared_config import openai_api_key
 from common.shared_config import serper_api_key
@@ -14,7 +15,7 @@ from eval.safe.rate_atomic_fact import check_atomic_fact
 from eval.safe.classify_relevance import revise_fact
 from common.modeling import Model
 
-from streamlit_app_helper import run_safe, extract_text_from_url, clean_text, get_clean_safe_results
+from streamlit_app_helper import run_safe, extract_text_from_url, clean_text, get_clean_safe_results, is_valid_url, is_text_length_valid
 
 from collections import defaultdict
 import os
@@ -47,7 +48,7 @@ typed_text = ""
 with url_section:
     url = st.text_input('Enter URL of the website')
     if st.button('Extract Text'):
-        if url:
+        if url and is_valid_url(url):
             extracted_text = extract_text_from_url(url)
             extracted_text = extracted_text[:100]
             st.session_state['input_text'] = extracted_text
@@ -55,17 +56,31 @@ with url_section:
             st.session_state['output_text'] = get_clean_safe_results(facts_op, model)
             st.experimental_rerun()
         else:
-            st.error('Please enter a URL')
+            st.error('Please enter a valid URL')
 
 # Customer Text Entering section
 with text_entry_section:
     entered_text = st.text_area('Paste your text here')
     if st.button('Submit Pasted Text'):
         if entered_text:
+            start_time = time.time()  # Start timing
+
             st.session_state['input_text'] = entered_text
+            text_set_time = time.time()  # Time after setting text
+            print(f"Time to set text: {text_set_time - start_time:.2f} seconds")
+
             facts_op = get_atomic_facts.main(entered_text, model)
+            facts_time = time.time()  # Time after getting facts
+            print(f"Time to get atomic facts: {facts_time - text_set_time:.2f} seconds")
+
             st.session_state['output_text'] = get_clean_safe_results(facts_op, model)
+            clean_results_time = time.time()  # Time after cleaning results
+            print(f"Time to clean results: {clean_results_time - facts_time:.2f} seconds")
+
             st.experimental_rerun()
+            rerun_time = time.time()  # Time after rerun
+            print(f"Time to rerun: {rerun_time - clean_results_time:.2f} seconds")
+
         else:
             st.error('Please enter text')
 
@@ -73,13 +88,13 @@ with text_entry_section:
 with text_typing_section:
     typed_text = st.text_area('Type your text here')
     if st.button('Submit Typed Text'):
-        if typed_text:
+        if typed_text and is_text_length_valid(typed_text):
             st.session_state['input_text']  = typed_text
             facts_op = get_atomic_facts.main(typed_text, model)
             st.session_state['output_text'] = get_clean_safe_results(facts_op, model)
             st.experimental_rerun()
         else:
-            st.error('Please enter text')
+            st.error('Please enter text with sufficient length')
 # Display output text
 if 'output_text' in st.session_state:
     st.header('Input Text')
