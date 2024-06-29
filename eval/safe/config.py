@@ -43,7 +43,7 @@ max_tokens = 512
 # search_type: str = Google/Bing Search API used. Choose from ['serper', 'bing'].
 # num_searches: int = Number of results to show per search.
 ################################################################################
-search_type = 'bing' # 'serper' or 'bing'
+search_type = 'serper' # 'serper' or 'bing'
 num_searches = 3
 
 ################################################################################
