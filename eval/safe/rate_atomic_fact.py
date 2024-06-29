@@ -26,6 +26,8 @@ from eval.safe import query_serper
 # pylint: enable=g-bad-import-order
 import requests
 
+from eval.safe.query_bing import BingSearch
+
 SUPPORTED_LABEL = 'Supported'
 NOT_SUPPORTED_LABEL = 'Not Supported'
 
@@ -72,25 +74,9 @@ STATEMENT:
 {_STATEMENT_PLACEHOLDER}
 """
 
-class BingSearchClient:
-    def __init__(self, api_key):
-        self.api_key = api_key
-        self.session = requests.Session()
-        self.session.headers.update({"Ocp-Apim-Subscription-Key": self.api_key})
-    
-    def search(self, query):
-        url = f"https://api.bing.microsoft.com/v7.0/search?q={query}"
-        response = self.session.get(url)
-        response.raise_for_status()  # Raises an HTTPError if the response code was unsuccessful
-        return response.json()
 
 @dataclasses.dataclass()
 class GoogleSearchResult:
-  query: str
-  result: str
-
-@dataclasses.dataclass()
-class BingSearchResult:
   query: str
   result: str
 
@@ -112,50 +98,11 @@ def call_search(
   if search_type == 'serper':
     serper_searcher = query_serper.SerperAPI(serper_api_key, k=num_searches)
     return serper_searcher.run(search_query, k=num_searches)
+  elif search_type == 'bing':
+    bing_searcher = BingSearch(shared_config.bing_api_key)
+    return bing_searcher.perform_search(search_query)
   else:
     raise ValueError(f'Unsupported search type: {search_type}')
-
-def maybe_get_next_bing_search(
-    atomic_fact: str,
-    past_searches: list[GoogleSearchResult],
-    model: modeling.Model,
-    debug: bool = safe_config.debug_safe,
-  ) -> GoogleSearchResult | None :
-    if past_searches is None:
-        past_searches = {}
-    
-    knowledge = '\n'.join([s.result for s in past_searches])
-    knowledge = 'N/A' if not knowledge else knowledge
-    full_prompt = _NEXT_SEARCH_FORMAT.replace(_STATEMENT_PLACEHOLDER, atomic_fact)
-    full_prompt = full_prompt.replace(_KNOWLEDGE_PLACEHOLDER, knowledge)
-    full_prompt = utils.strip_string(full_prompt)
-    model_response = model.generate(full_prompt, do_debug=debug)
-    query = utils.extract_first_code_block(model_response, ignore_language=True)
-
-    if query in past_searches and past_searches[query]:
-        return past_searches[query].pop(0)
-    
-    api_key = shared_config.bing_api_key
-    endPoint = f"https://api.bing.microsoft.com/v7.0/search"
-    headers = {"Ocp-Apim-Subscription-Key": api_key}
-    mkt = 'en-US'
-    params = { 'q': query, 'mkt': mkt }
-    response = requests.get(endPoint, headers=headers, params=params)
-    response.raise_for_status()
-    
-    search_results = response.json()
-    
-    if 'webPages' in search_results and 'value' in search_results['webPages']:
-      web_pages = search_results['webPages']['value']
-      # Convert web page results to BingSearchResult instances
-      bing_results = [GoogleSearchResult(query=query, result=page['snippet']) for page in web_pages if isinstance(page, dict) and 'snippet' in page]
-
-      snippets = []
-      for result in bing_results:
-            snippets.append(result.result)
-      return GoogleSearchResult(query=query, result=', '.join(snippets))
-
-    return None
 
 def maybe_get_next_search(
     atomic_fact: str,
@@ -215,12 +162,7 @@ def check_atomic_fact(
     next_search, num_tries = None, 0
 
     while not next_search and num_tries <= max_retries:
-      #Google:
-      #next_search = maybe_get_next_search(atomic_fact, search_results, rater)
-
-      #Bing:
-      next_search = maybe_get_next_bing_search(atomic_fact, search_results, rater)
-
+      next_search = maybe_get_next_search(atomic_fact, search_results, rater)
       num_tries += 1
 
     if next_search is None:
