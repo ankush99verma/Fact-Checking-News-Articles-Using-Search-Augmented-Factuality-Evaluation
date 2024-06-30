@@ -73,6 +73,10 @@ with text_entry_section:
             facts_time = time.time()  # Time after getting facts
             print(f"Time to get atomic facts: {facts_time - text_set_time:.2f} seconds")
 
+            if facts_op.get('num_claims', 0) == 0:    
+                st.error('No atomic facts found in the text')
+                st.stop()
+
             st.session_state['output_text'] = get_clean_safe_results(facts_op, model)
             clean_results_time = time.time()  # Time after cleaning results
             print(f"Time to clean results: {clean_results_time - facts_time:.2f} seconds")
