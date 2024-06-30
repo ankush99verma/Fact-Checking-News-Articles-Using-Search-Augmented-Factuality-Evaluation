@@ -13,6 +13,7 @@
 # limitations under the License.
 """Identifies whether an atomic fact is relevant for ansing the prompt."""
 
+import logging
 from typing import Any
 
 # pylint: disable=g-bad-import-order
@@ -21,6 +22,9 @@ from common import utils
 from eval.safe import config as safe_config
 # pylint: enable=g-bad-import-order
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 SYMBOL = 'Foo'
 NOT_SYMBOL = 'Not Foo'
 
@@ -28,14 +32,11 @@ _PROMPT_PLACEHOLDER = '[PROMPT]'
 _RESPONSE_PLACEHOLDER = '[RESPONSE]'
 _STATEMENT_PLACEHOLDER = '[ATOMIC FACT]'
 
-
 _REVISE_FORMAT = f"""\
 Vague references include but are not limited to:
 - Pronouns (e.g., "his", "they", "her")
 - Unknown entities (e.g., "this event", "the research", "the invention")
 - Non-full names (e.g., "Jeff..." or "Bezos..." when referring to Jeff Bezos)
-
-
 Instructions:
 1. The following STATEMENT has been extracted from the broader context of the \
 given RESPONSE.
@@ -165,11 +166,25 @@ def revise_fact(
   full_prompt = utils.strip_string(full_prompt)
   model_response, revised_fact, num_tries = '', '', 0
 
-  while not revised_fact and num_tries <= max_retries:
-    model_response = model.generate(full_prompt, do_debug=do_debug)
-    revised_fact = utils.extract_first_code_block(
-        model_response, ignore_language=True
-    )
-    num_tries += 1
+  logging.info("Starting the revision process for the atomic fact.")
 
-  return model_response, revised_fact or atomic_fact
+  while not revised_fact and num_tries <= max_retries:
+    try:
+        model_response = model.generate(full_prompt, do_debug=do_debug)
+        revised_fact = utils.extract_first_code_block(
+            model_response, ignore_language=True
+        )
+        num_tries += 1
+        if revised_fact:
+            logging.info("Revision completed successfully.")
+        else:
+            logging.warning(f"Revision attempt {num_tries} failed; retrying.")
+    except Exception as e:
+        logging.error(f"Error during model generation on try {num_tries}: {e}")
+        break
+
+  if not revised_fact:
+      logging.warning("Max retries reached without successful revision.")
+      revised_fact = atomic_fact  # Fallback to the original fact if no revision successful.
+
+  return model_response, revised_fact
