@@ -24,6 +24,9 @@ from common import utils
 from eval.safe import config as safe_config
 from eval.safe import query_serper
 # pylint: enable=g-bad-import-order
+import requests
+
+from eval.safe.query_bing import BingSearch
 
 SUPPORTED_LABEL = 'Supported'
 NOT_SUPPORTED_LABEL = 'Not Supported'
@@ -77,12 +80,10 @@ class GoogleSearchResult:
   query: str
   result: str
 
-
 @dataclasses.dataclass()
 class FinalAnswer:
   response: str
   answer: str
-
 
 def call_search(
     search_query: str,
@@ -97,9 +98,11 @@ def call_search(
   if search_type == 'serper':
     serper_searcher = query_serper.SerperAPI(serper_api_key, k=num_searches)
     return serper_searcher.run(search_query, k=num_searches)
+  elif search_type == 'bing':
+    bing_searcher = BingSearch(shared_config.bing_api_key)
+    return bing_searcher.perform_search(search_query)
   else:
     raise ValueError(f'Unsupported search type: {search_type}')
-
 
 def maybe_get_next_search(
     atomic_fact: str,

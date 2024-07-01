@@ -106,7 +106,9 @@ def process_fact(sentence, atomic_fact, model):
 # Define helper functions
 def is_valid_url(url):
     parsed = urlparse(url)
-    return bool(parsed.scheme) and bool(parsed.netloc)
+    # Check if the scheme is in a list of allowed schemes
+    valid_schemes = ['http', 'https', 'ftp', 'ftps']
+    return parsed.scheme in valid_schemes and bool(parsed.netloc)
 
 def is_text_length_valid(text, min_length=10):  # minimum length can be adjusted
     return len(text) >= min_length

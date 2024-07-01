@@ -30,7 +30,15 @@ import spacy
 from common import modeling
 from common import shared_config
 from common import utils
+
+import re
+import spacy
+from langdetect import detect, LangDetectException
+
 # pylint: enable=g-bad-import-order
+
+# Load the spaCy English language model
+nlp = spacy.load("en_core_web_sm")
 
 nltk.download('punkt', quiet=True)
 
@@ -69,6 +77,33 @@ with "- ". Do not include other formatting.
 
 class AtomicFactGenerator(object):
   """Atomic fact generator."""
+
+  def is_valid_atomic_fact(self, atomic_fact: str) -> bool:
+    """Check if the atomic fact contains meaningful content using NLP-based validation."""
+    # Initial simple checks for length and gibberish
+    if len(atomic_fact) < 5 or not re.search(r'\w{3,}', atomic_fact):
+        return False
+    
+    # NLP-based validation with spaCy
+    doc = nlp(atomic_fact)
+    # Example check: atomic fact should contain at least one noun and one verb
+    has_noun = any(token.pos_ == "NOUN" for token in doc)
+    has_verb = any(token.pos_ == "VERB" for token in doc)
+    if not (has_noun and has_verb):
+        return False
+    
+    # Language detection with langdetect
+    try:
+        language = detect(atomic_fact)
+    except LangDetectException:
+        # If language detection fails, consider the atomic fact invalid
+        return False
+    
+    if language != 'en':  # Assuming English is the target language
+        return False
+    
+    # The atomic fact passes all checks
+    return True
 
   def __init__(
       self,
@@ -122,6 +157,7 @@ class AtomicFactGenerator(object):
           curr_sentences,
           curr_sentences_2,
       )
+
       sentences += curr_sentences
 
     atoms_or_estimate = self.get_init_atomic_facts_from_sentence(
@@ -183,7 +219,8 @@ class AtomicFactGenerator(object):
       ):
         atomic_facts_pairs.append((sent, []))
       else:
-        atomic_facts_pairs.append((sent, atoms[sent]))
+        if (self.is_valid_atomic_fact(sent)):
+          atomic_facts_pairs.append((sent, atoms[sent]))
 
     # postprocess_atomic_facts will fix minor issues from InstructGPT
     # it is supposed to handle sentence splitter issue too, but since here
