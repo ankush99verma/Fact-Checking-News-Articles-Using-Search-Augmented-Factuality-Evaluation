@@ -29,6 +29,7 @@ url_section = st.expander("Enter URL of public news article you want to fact che
 text_entry_section = st.expander("Copy Paste text you want to fact check")
 bulk_url_section = st.expander("Upload file with line-separated URLs for bulk processing")
 
+
 # Bulk URL processing section
 with bulk_url_section:
     uploaded_file = st.file_uploader("Choose a file")
@@ -50,6 +51,8 @@ with bulk_url_section:
             else:
                 logging.warning(f"Invalid URL skipped: {url}")
                 bulk_results.append((url, {}, {}))
+        # Store results in session state and display
+        st.session_state['bulk_results'] = bulk_results
 
 # Web Text Extractor section
 with url_section:
@@ -98,6 +101,7 @@ if 'output_text' in st.session_state and 'input_text' in st.session_state:
     clean_results, search_dicts = st.session_state['output_text']
     facts_df = pd.DataFrame(list(clean_results.items()), columns=['Fact', 'Support'])
     search_df = pd.DataFrame(list(search_dicts.items()), columns=['Fact', 'Search Results'])
+    search_df['Search Results'] = search_df['Search Results'].apply(lambda x: ', '.join([f"Query: {res['query']}, Result: {res['result']}" for res in x]))
     combined_df = pd.merge(facts_df, search_df, on='Fact', how='left')
     st.dataframe(combined_df)
     total_facts = len(combined_df)
@@ -115,6 +119,7 @@ elif 'bulk_results' in st.session_state:
         st.subheader(f'Results for URL: {url}')
         facts_df = pd.DataFrame(list(clean_results.items()), columns=['Fact', 'Support'])
         search_df = pd.DataFrame(list(search_dicts.items()), columns=['Fact', 'Search Results'])
+        search_df['Search Results'] = search_df['Search Results'].apply(lambda x: ', '.join([f"Query: {res['query']}, Result: {res['result']}" for res in x]))
         combined_df = pd.merge(facts_df, search_df, on='Fact', how='left')
         st.dataframe(combined_df)
         total_facts = len(combined_df)

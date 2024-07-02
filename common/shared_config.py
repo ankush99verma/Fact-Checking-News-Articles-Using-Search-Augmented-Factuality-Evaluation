@@ -37,6 +37,7 @@ people, numbers, events, locations, dates, times, etc.)
 openai_api_key = ''
 anthropic_api_key = ''
 serper_api_key = ''
+bing_api_key=''
 random_seed = 1
 model_options = {
     #'gpt_4_turbo': 'OPENAI:gpt-4-0125-preview',

@@ -20,6 +20,7 @@ from typing import Any
 from common import modeling
 from common import utils
 from eval.safe import config as safe_config
+import time
 # pylint: enable=g-bad-import-order
 
 # Configure logging
@@ -166,10 +167,11 @@ def revise_fact(
   full_prompt = utils.strip_string(full_prompt)
   model_response, revised_fact, num_tries = '', '', 0
 
-  logging.info("Starting the revision process for the atomic fact.")
+  logging.info(".")
 
   while not revised_fact and num_tries <= max_retries:
     try:
+        time.sleep(60) #Sleep to avoid crossing request per minute and token per second thresholds
         model_response = model.generate(full_prompt, do_debug=do_debug)
         revised_fact = utils.extract_first_code_block(
             model_response, ignore_language=True

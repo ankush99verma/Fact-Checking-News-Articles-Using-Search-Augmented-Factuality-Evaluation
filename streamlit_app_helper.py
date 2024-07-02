@@ -87,22 +87,30 @@ def run_safe(facts_op, model):
 
 def get_clean_safe_results(facts_op, model):
     try:
-        result_dict = run_safe(facts_op, model)
-        cleaned_result = {
-            atomic_fact: result_dict[sent_id][atomic_fact]['rate_data']
-            for sent_id in range(len(facts_op['all_atomic_facts']))
-            for atomic_fact in facts_op['all_atomic_facts'][sent_id]['atomic_facts']
-        }
-        clean_results = {key: cleaned_result[key].answer if cleaned_result[key] is not None else None for key in cleaned_result.keys()}
         
-        search_results = {
-        atomic_fact: result_dict[sent_id][atomic_fact]['search_dicts']['google_searches']
-        for sent_id in range(len(facts_op['all_atomic_facts']))
-        for atomic_fact in facts_op['all_atomic_facts'][sent_id]['atomic_facts']
-        }
-
-        logging.info("Results cleaned and prepared.")
-        return clean_results, search_results
+        result_dict = run_safe(facts_op, model)
+        
+        if result_dict is None:
+            logging.error("run_safe returned None")
+            return {}, {}
+        else:
+            cleaned_result = {
+                atomic_fact: result_dict[sent_id][atomic_fact]['rate_data']
+                for sent_id in range(len(facts_op['all_atomic_facts']))
+                for atomic_fact in facts_op['all_atomic_facts'][sent_id]['atomic_facts']
+            }
+            
+            search_results_raw = {
+                atomic_fact: result_dict[sent_id][atomic_fact]['search_dicts']['google_searches']
+                for sent_id in range(len(facts_op['all_atomic_facts']))
+                for atomic_fact in facts_op['all_atomic_facts'][sent_id]['atomic_facts']
+            }
+            
+            clean_results = {key: cleaned_result[key].answer if cleaned_result[key] is not None else None for key in cleaned_result.keys()}
+            search_results = {key: search_results_raw[key] if search_results_raw[key] is not None else [] for key in search_results_raw.keys()}
+            
+            logging.info("Results cleaned and prepared.")
+            return clean_results, search_results
     except Exception as e:
         logging.error(f"Error in getting clean safe results: {e}")
         return {}
@@ -120,7 +128,9 @@ def process_fact(sentence, atomic_fact, model):
 # Define helper functions
 def is_valid_url(url):
     parsed = urlparse(url)
-    return bool(parsed.scheme) and bool(parsed.netloc)
+    # Check if the scheme is in a list of allowed schemes
+    valid_schemes = ['http', 'https', 'ftp', 'ftps']
+    return parsed.scheme in valid_schemes and bool(parsed.netloc)
 
 def is_text_length_valid(text, min_length=10):  # minimum length can be adjusted
     return len(text) >= min_length

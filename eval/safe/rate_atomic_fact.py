@@ -25,6 +25,10 @@ from common import utils
 from eval.safe import config as safe_config
 from eval.safe import query_serper
 # pylint: enable=g-bad-import-order
+import requests
+import time
+
+from eval.safe.query_bing import BingSearch
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -98,7 +102,12 @@ def call_search(
 
   if search_type == 'serper':
     serper_searcher = query_serper.SerperAPI(serper_api_key, k=num_searches)
-    result = serper_searcher.run(search_query, k=num_searches)
+    result= serper_searcher.run(search_query, k=num_searches)
+    logging.info(f"Received search result: {result}")
+    return result
+  elif search_type == 'bing':
+    bing_searcher = BingSearch(shared_config.bing_api_key)
+    result=bing_searcher.perform_search(search_query)
     logging.info(f"Received search result: {result}")
     return result
   else:
@@ -120,6 +129,7 @@ def maybe_get_next_search(
   
   logging.info("Generating the next search query using the model.")
   model_response = model.generate(full_prompt, do_debug=debug)
+  time.sleep(5) #Sleep to avoid crossing request per minute and token per second thresholds
   query = utils.extract_first_code_block(model_response, ignore_language=True)
 
   if model_response and query:
@@ -145,6 +155,7 @@ def maybe_get_final_answer(
   
   logging.info("Determining the final answer using the model.")
   model_response = model.generate(full_prompt, do_debug=debug)
+  time.sleep(5) #Sleep to avoid crossing request per minute and token per second thresholds
   answer = utils.extract_first_square_brackets(model_response)
   answer = re.sub(r'[^\w\s]', '', answer).strip()
 
