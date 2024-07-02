@@ -21,6 +21,7 @@ import os
 import langfun as lf
 from typing import Dict, Any
 from collections import defaultdict
+import json
 
 
 def clean_text(text):
@@ -103,11 +104,15 @@ def get_clean_safe_results(facts_op, model) -> Dict[str, Any]:
             rate_data = details['rate_data']
             if rate_data is not None:
                 answer = rate_data.answer if rate_data.answer is not None else 'None'
-                urls = '\n\n'.join([f"{metadata_item.url} ({metadata_item.datePublished})" for metadata_item in rate_data.metadata]) if rate_data.metadata else 'No URL'
+                urls = '\n\n'.join([f"{metadata_item.url} (Published date: {metadata_item.datePublished})" for metadata_item in rate_data.metadata]) if rate_data.metadata else 'No URL'
             else:
                 answer = 'None'
                 urls = 'No URL'
             results.append([atomic_fact, answer, urls])
+
+    downloads_path = os.path.join(os.path.expanduser('~'), 'Downloads', 'results.json')
+    with open(downloads_path, 'w') as file:
+        json.dump(results, file, indent=4)
 
     return results
 
