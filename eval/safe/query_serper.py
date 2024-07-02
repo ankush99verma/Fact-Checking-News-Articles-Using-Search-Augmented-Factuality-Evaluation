@@ -132,20 +132,21 @@ class SerperAPI:
         title = kg.get('title')
         entity_type = kg.get('type')
         description = kg.get('description')
+        link = kg.get('descriptionLink')
 
         if entity_type:
             snippet = f'{title}: {entity_type}.'
             snippets.append(snippet)
-            metadata.append(SearchResultMetadata(snippet=snippet))
+            metadata.append(SearchResultMetadata(snippet=snippet, url=link, datePublished=None))
 
         if description:
             snippets.append(description)
-            metadata.append(SearchResultMetadata(snippet=description))
+            metadata.append(SearchResultMetadata(snippet=description, url=link, datePublished=None))
 
         for attribute, value in kg.get('attributes', {}).items():
             snippet = f'{title} {attribute}: {value}.'
             snippets.append(snippet)
-            metadata.append(SearchResultMetadata(snippet=snippet))
+            metadata.append(SearchResultMetadata(snippet=snippet, url=link, datePublished=None))
 
     result_key = self.result_key_for_type[self.search_type]
 
