@@ -18,6 +18,7 @@ import time
 from typing import Any, Optional, Literal
 
 import requests
+from eval.safe.search_results import GoogleSearchResult, SearchResultMetadata
 
 _SERPER_URL = 'https://google.serper.dev'
 NO_RESULT_MSG = 'No good Google Search result was found'
@@ -34,6 +35,7 @@ class SerperAPI:
       k: int = 1,
       tbs: Optional[str] = None,
       search_type: Literal['news', 'search', 'places', 'images'] = 'search',
+      query=None
   ):
     self.serper_api_key = serper_api_key
     self.gl = gl
@@ -47,10 +49,12 @@ class SerperAPI:
         'images': 'images',
         'search': 'organic',
     }
+    self.query = query
 
-  def run(self, query: str, **kwargs: Any) -> str:
+  def run(self, query: str, **kwargs: Any) -> GoogleSearchResult:
     """Run query through GoogleSearch and parse result."""
     assert self.serper_api_key, 'Missing serper_api_key.'
+    self.query = query
     results = self._google_serper_api_results(
         query,
         gl=self.gl,
@@ -102,52 +106,69 @@ class SerperAPI:
     search_results = response.json()
     return search_results
 
-  def _parse_snippets(self, results: dict[Any, Any]) -> list[str]:
-    """Parse results."""
+  def _parse_snippets(self, results: dict) -> GoogleSearchResult:
+    """Parse results and return a GoogleSearchResult object."""
     snippets = []
+    metadata = []
 
     if results.get('answerBox'):
-      answer_box = results.get('answerBox', {})
-      answer = answer_box.get('answer')
-      snippet = answer_box.get('snippet')
-      snippet_highlighted = answer_box.get('snippetHighlighted')
+        answer_box = results.get('answerBox', {})
+        answer = answer_box.get('answer')
+        snippet = answer_box.get('snippet')
+        snippet_highlighted = answer_box.get('snippetHighlighted')
 
-      if answer and isinstance(answer, str):
-        snippets.append(answer)
-      if snippet and isinstance(snippet, str):
-        snippets.append(snippet.replace('\n', ' '))
-      if snippet_highlighted:
-        snippets.append(snippet_highlighted)
+        if answer and isinstance(answer, str):
+            snippets.append(answer)
+            metadata.append(SearchResultMetadata(snippet=answer))
+        if snippet and isinstance(snippet, str):
+            snippets.append(snippet.replace('\n', ' '))
+            metadata.append(SearchResultMetadata(snippet=snippet.replace('\n', ' ')))
+        if snippet_highlighted:
+            snippets.append(snippet_highlighted)
+            metadata.append(SearchResultMetadata(snippet=snippet_highlighted))
 
     if results.get('knowledgeGraph'):
-      kg = results.get('knowledgeGraph', {})
-      title = kg.get('title')
-      entity_type = kg.get('type')
-      description = kg.get('description')
+        kg = results.get('knowledgeGraph', {})
+        title = kg.get('title')
+        entity_type = kg.get('type')
+        description = kg.get('description')
 
-      if entity_type:
-        snippets.append(f'{title}: {entity_type}.')
+        if entity_type:
+            snippet = f'{title}: {entity_type}.'
+            snippets.append(snippet)
+            metadata.append(SearchResultMetadata(snippet=snippet))
 
-      if description:
-        snippets.append(description)
+        if description:
+            snippets.append(description)
+            metadata.append(SearchResultMetadata(snippet=description))
 
-      for attribute, value in kg.get('attributes', {}).items():
-        snippets.append(f'{title} {attribute}: {value}.')
+        for attribute, value in kg.get('attributes', {}).items():
+            snippet = f'{title} {attribute}: {value}.'
+            snippets.append(snippet)
+            metadata.append(SearchResultMetadata(snippet=snippet))
 
     result_key = self.result_key_for_type[self.search_type]
 
     if result_key in results:
-      for result in results[result_key][:self.k]:
-        if 'snippet' in result:
-          snippets.append(result['snippet'])
+        for result in results[result_key][:self.k]:
+            url = result.get('link', '')
+            datePublished = result.get('date', '')
 
-        for attribute, value in result.get('attributes', {}).items():
-          snippets.append(f'{attribute}: {value}.')
+            if 'snippet' in result:
+                snippets.append(result['snippet'])
+                metadata.append(SearchResultMetadata(snippet=result['snippet'], url=url, datePublished=datePublished))
+
+
+            for attribute, value in result.get('attributes', {}).items():
+                snippet = f'{attribute}: {value}.'
+                snippets.append(snippet)
+                metadata.append(SearchResultMetadata(snippet=snippet, url=url, datePublished=datePublished))
 
     if not snippets:
-      return [NO_RESULT_MSG]
+        return GoogleSearchResult(query=self.query, result=NO_RESULT_MSG, metadata=[])
 
-    return snippets
+    result_snippets = ' '.join(snippets)  # Combine snippets into a single string
+    return GoogleSearchResult(query=self.query, result=result_snippets, metadata=metadata)
 
-  def _parse_results(self, results: dict[Any, Any]) -> str:
-    return ' '.join(self._parse_snippets(results))
+  def _parse_results(self, results: dict[Any, Any]) -> GoogleSearchResult:
+    return self._parse_snippets(results)

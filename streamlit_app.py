@@ -107,7 +107,7 @@ if 'output_text' in st.session_state:
     st.header('Fact Check Results')
 
     # Convert the output dictionary to a pandas DataFrame for better display
-    facts_df = pd.DataFrame(list(st.session_state['output_text'].items()), columns=['Fact', 'Support'])
+    facts_df = pd.DataFrame(st.session_state['output_text'], columns=['Fact', 'Support', 'Source URLs'])
 
     # Display the DataFrame in a tabular format
     st.dataframe(facts_df)

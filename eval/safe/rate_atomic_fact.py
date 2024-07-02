@@ -27,6 +27,8 @@ from eval.safe import query_serper
 import requests
 
 from eval.safe.query_bing import BingSearch
+from typing import Dict, List, Optional
+from eval.safe.search_results import GoogleSearchResult, SearchResultMetadata
 
 SUPPORTED_LABEL = 'Supported'
 NOT_SUPPORTED_LABEL = 'Not Supported'
@@ -74,16 +76,12 @@ STATEMENT:
 {_STATEMENT_PLACEHOLDER}
 """
 
-
-@dataclasses.dataclass()
-class GoogleSearchResult:
-  query: str
-  result: str
-
 @dataclasses.dataclass()
 class FinalAnswer:
   response: str
   answer: str
+  metadata: Optional[SearchResultMetadata] = None  # Maps ID to metadata
+
 
 def call_search(
     search_query: str,
@@ -91,7 +89,7 @@ def call_search(
     num_searches: int = safe_config.num_searches,
     serper_api_key: str = shared_config.serper_api_key,
     search_postamble: str = '',  # ex: 'site:https://en.wikipedia.org'
-) -> str:
+) -> GoogleSearchResult:
   """Call Google Search to get the search result."""
   search_query += f' {search_postamble}' if search_postamble else ''
 
@@ -111,7 +109,7 @@ def maybe_get_next_search(
     debug: bool = safe_config.debug_safe,
 ) -> GoogleSearchResult | None:
   """Get the next query from the model."""
-  knowledge = '\n'.join([s.result for s in past_searches])
+  knowledge = '\n'.join([str(s.result) for s in past_searches if isinstance(s, GoogleSearchResult) and hasattr(s, 'result')])
   knowledge = 'N/A' if not knowledge else knowledge
   full_prompt = _NEXT_SEARCH_FORMAT.replace(_STATEMENT_PLACEHOLDER, atomic_fact)
   full_prompt = full_prompt.replace(_KNOWLEDGE_PLACEHOLDER, knowledge)
@@ -120,7 +118,8 @@ def maybe_get_next_search(
   query = utils.extract_first_code_block(model_response, ignore_language=True)
 
   if model_response and query:
-    return GoogleSearchResult(query=query, result=call_search(query))
+    result = call_search(query)
+    return GoogleSearchResult(query=query, result=result, metadata=result.metadata)
 
   return None
 
@@ -132,7 +131,9 @@ def maybe_get_final_answer(
     debug: bool = safe_config.debug_safe,
 ) -> FinalAnswer | None:
   """Get the final answer from the model."""
-  knowledge = '\n'.join([search.result for search in searches])
+  #knowledge = '\n'.join([search.result for search in searches])
+  knowledge = '\n'.join([str(search.result) for search in searches if isinstance(search, GoogleSearchResult) and hasattr(search, 'result')])
+
   full_prompt = _FINAL_ANSWER_FORMAT.replace(
       _STATEMENT_PLACEHOLDER, atomic_fact
   )
@@ -143,7 +144,7 @@ def maybe_get_final_answer(
   answer = re.sub(r'[^\w\s]', '', answer).strip()
 
   if model_response and answer in [SUPPORTED_LABEL, NOT_SUPPORTED_LABEL]:
-    return FinalAnswer(response=model_response, answer=answer)
+    return FinalAnswer(response=model_response, answer=answer, metadata=searches[0].metadata)
 
   return None
 

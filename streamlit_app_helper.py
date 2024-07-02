@@ -19,6 +19,8 @@ from common.modeling import Model
 from collections import defaultdict
 import os
 import langfun as lf
+from typing import Dict, Any
+from collections import defaultdict
 
 
 def clean_text(text):
@@ -89,15 +91,25 @@ def run_safe(facts_op, model):
     
     return result_dict
 
-def get_clean_safe_results(facts_op,model):
-   result_dict = run_safe(facts_op, model)
-   cleaned_result =  { atomic_fact: result_dict[sent_id][atomic_fact]['rate_data']
+def get_clean_safe_results(facts_op, model) -> Dict[str, Any]:
+    result_dict = run_safe(facts_op, model)
+    cleaned_result = defaultdict(dict)
 
-                     for sent_id in range(len(facts_op['all_atomic_facts']))
-                     for atomic_fact in facts_op['all_atomic_facts'][sent_id]['atomic_facts']
-                     
-                     }
-   return {key: cleaned_result[key].answer if cleaned_result[key] is not None else None for key in cleaned_result.keys()}
+    for sent_id, facts in result_dict.items():
+        results = []
+
+    for sent_id, facts in result_dict.items():
+        for atomic_fact, details in facts.items():
+            rate_data = details['rate_data']
+            if rate_data is not None:
+                answer = rate_data.answer if rate_data.answer is not None else 'None'
+                urls = '\n\n'.join([f"{metadata_item.url} ({metadata_item.datePublished})" for metadata_item in rate_data.metadata]) if rate_data.metadata else 'No URL'
+            else:
+                answer = 'None'
+                urls = 'No URL'
+            results.append([atomic_fact, answer, urls])
+
+    return results
 
 def process_fact(sentence, atomic_fact, model):
     revised_fact, _ = revise_fact(response=sentence, atomic_fact=atomic_fact, model=model)
