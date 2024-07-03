@@ -171,7 +171,6 @@ def revise_fact(
 
   while not revised_fact and num_tries <= max_retries:
     try:
-        time.sleep(60) #Sleep to avoid crossing request per minute and token per second thresholds
         model_response = model.generate(full_prompt, do_debug=do_debug)
         revised_fact = utils.extract_first_code_block(
             model_response, ignore_language=True

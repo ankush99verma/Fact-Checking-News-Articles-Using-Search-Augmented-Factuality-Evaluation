@@ -44,7 +44,7 @@ max_tokens = 512
 # num_searches: int = Number of results to show per search.
 ################################################################################
 search_type = 'serper' # 'serper' or 'bing'
-num_searches = 3
+num_searches = 250
 
 ################################################################################
 #                               SAFE SETTINGS

@@ -290,7 +290,6 @@ class AtomicFactGenerator(object):
         if self.other_lm is not None:
           prompt_to_send = ATOMIC_FACT_INSTRUCTION + prompt  # add instructions
           output = self.other_lm.generate(prompt_to_send, temperature=0)
-          time.sleep(5) #Sleep to avoid crossing request per minute and token per second thresholds
         else:
           raise ValueError('other_lm is None')
 

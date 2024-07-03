@@ -129,7 +129,6 @@ def maybe_get_next_search(
   
   logging.info("Generating the next search query using the model.")
   model_response = model.generate(full_prompt, do_debug=debug)
-  time.sleep(5) #Sleep to avoid crossing request per minute and token per second thresholds
   query = utils.extract_first_code_block(model_response, ignore_language=True)
 
   if model_response and query:
@@ -155,7 +154,6 @@ def maybe_get_final_answer(
   
   logging.info("Determining the final answer using the model.")
   model_response = model.generate(full_prompt, do_debug=debug)
-  time.sleep(5) #Sleep to avoid crossing request per minute and token per second thresholds
   answer = utils.extract_first_square_brackets(model_response)
   answer = re.sub(r'[^\w\s]', '', answer).strip()
 
