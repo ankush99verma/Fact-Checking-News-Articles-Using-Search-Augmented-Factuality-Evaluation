@@ -15,6 +15,7 @@
 
 import dataclasses
 import re
+import logging
 from typing import Any
 
 # pylint: disable=g-bad-import-order
@@ -25,10 +26,14 @@ from eval.safe import config as safe_config
 from eval.safe import query_serper
 # pylint: enable=g-bad-import-order
 import requests
+import time
 
 from eval.safe.query_bing import BingSearch
 from typing import Dict, List, Optional
 from eval.safe.search_results import GoogleSearchResult, SearchResultMetadata
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 SUPPORTED_LABEL = 'Supported'
 NOT_SUPPORTED_LABEL = 'Not Supported'
@@ -92,14 +97,20 @@ def call_search(
 ) -> GoogleSearchResult:
   """Call Google Search to get the search result."""
   search_query += f' {search_postamble}' if search_postamble else ''
+  logging.info(f"Calling search with query: {search_query}")
 
   if search_type == 'serper':
     serper_searcher = query_serper.SerperAPI(serper_api_key, k=num_searches)
-    return serper_searcher.run(search_query, k=num_searches)
+    result= serper_searcher.run(search_query, k=num_searches)
+    logging.info(f"Received search result: {result}")
+    return result
   elif search_type == 'bing':
     bing_searcher = BingSearch(shared_config.bing_api_key)
-    return bing_searcher.perform_search(search_query)
+    result=bing_searcher.perform_search(search_query)
+    logging.info(f"Received search result: {result}")
+    return result
   else:
+    logging.error(f'Unsupported search type: {search_type}')
     raise ValueError(f'Unsupported search type: {search_type}')
 
 def maybe_get_next_search(
@@ -114,15 +125,18 @@ def maybe_get_next_search(
   full_prompt = _NEXT_SEARCH_FORMAT.replace(_STATEMENT_PLACEHOLDER, atomic_fact)
   full_prompt = full_prompt.replace(_KNOWLEDGE_PLACEHOLDER, knowledge)
   full_prompt = utils.strip_string(full_prompt)
+  
+  logging.info("Generating the next search query using the model.")
   model_response = model.generate(full_prompt, do_debug=debug)
   query = utils.extract_first_code_block(model_response, ignore_language=True)
 
   if model_response and query:
+    logging.info(f"Generated query: {query}")
     result = call_search(query)
     return GoogleSearchResult(query=query, result=result, metadata=result.metadata)
-
-  return None
-
+  else:
+    logging.warning("Failed to generate a valid query.")
+    return None
 
 def maybe_get_final_answer(
     atomic_fact: str,
@@ -139,15 +153,18 @@ def maybe_get_final_answer(
   )
   full_prompt = full_prompt.replace(_KNOWLEDGE_PLACEHOLDER, knowledge)
   full_prompt = utils.strip_string(full_prompt)
+  
+  logging.info("Determining the final answer using the model.")
   model_response = model.generate(full_prompt, do_debug=debug)
   answer = utils.extract_first_square_brackets(model_response)
   answer = re.sub(r'[^\w\s]', '', answer).strip()
 
   if model_response and answer in [SUPPORTED_LABEL, NOT_SUPPORTED_LABEL]:
+    logging.info(f"Determined final answer: {answer}")
     return FinalAnswer(response=model_response, answer=answer, metadata=searches[0].metadata)
-
-  return None
-
+  else:
+    logging.error("Failed to determine a conclusive final answer.")
+    return None
 
 def check_atomic_fact(
     atomic_fact: str,
@@ -158,6 +175,7 @@ def check_atomic_fact(
 ) -> tuple[FinalAnswer | None, dict[str, Any]]:
   """Check if the given atomic fact is supported."""
   search_results = []
+  logging.info("Starting the process to check the atomic fact.")
 
   for _ in range(max_steps):
     next_search, num_tries = None, 0
@@ -165,10 +183,10 @@ def check_atomic_fact(
     while not next_search and num_tries <= max_retries:
       next_search = maybe_get_next_search(atomic_fact, search_results, rater)
       num_tries += 1
-
-    if next_search is None:
-      utils.maybe_print_error('Unsuccessful parsing for `next_search`')
-      break
+      if next_search is None:
+        utils.maybe_print_error('Unsuccessful parsing for `next_search`')
+        logging.warning(f"Attempt {_+1}: Unsuccessful parsing for `next_search` after {num_tries} retries.")
+        break
     else:
       search_results.append(next_search)
 
@@ -182,8 +200,10 @@ def check_atomic_fact(
     final_answer = maybe_get_final_answer(
         atomic_fact, searches=search_results, model=rater, debug=debug
     )
-
-  if final_answer is None:
-    utils.maybe_print_error('Unsuccessful parsing for `final_answer`')
+    if final_answer is None:
+      utils.maybe_print_error('Unsuccessful parsing for `final_answer`')
+      logging.error(f"Failed to obtain a final answer after {num_tries} attempts.")
+    else:
+      logging.info("Final answer obtained successfully.")
 
   return final_answer, search_dicts
