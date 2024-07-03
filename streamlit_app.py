@@ -6,7 +6,7 @@ from common.shared_config import serper_api_key
 from eval.safe import get_atomic_facts
 from common.modeling import Model
 import io
-from streamlit_app_helper import extract_text_from_url, get_clean_safe_results, is_valid_url
+from streamlit_app_helper import extract_text_from_url, get_clean_safe_results, is_valid_url, filter_advertisements, process_bulk_urls
 import os
 
 
@@ -29,31 +29,25 @@ url_section = st.expander("Enter URL of public news article you want to fact che
 text_entry_section = st.expander("Copy Paste text you want to fact check")
 bulk_url_section = st.expander("Upload file with line-separated URLs for bulk processing")
 
-
 # Bulk URL processing section
 with bulk_url_section:
-    uploaded_file = st.file_uploader("Choose a file")
+    uploaded_file = st.file_uploader("Choose a .txt file", type=["txt"])
     if uploaded_file is not None:
-        stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
-        url_list = stringio.read().split()
-        bulk_results = []
-        for url in url_list:
-            if is_valid_url(url):
-                try:
-                    extracted_text = extract_text_from_url(url)
-                    facts_op = get_atomic_facts.main(extracted_text, model)
-                    clean_results, search_dicts = get_clean_safe_results(facts_op, model)
-                    bulk_results.append((url, clean_results, search_dicts))
-                    logging.info(f"Processed URL: {url}")
-                except Exception as e:
-                    logging.error(f"Failed to process URL {url}: {e}")
-                    bulk_results.append((url, {}, {}))
-            else:
-                logging.warning(f"Invalid URL skipped: {url}")
-                bulk_results.append((url, {}, {}))
-        # Store results in session state and display
-        st.session_state['bulk_results'] = bulk_results
-
+        if uploaded_file.name.endswith('.txt'):
+            try:
+                stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
+                url_list = stringio.read().splitlines()
+                if all(is_valid_url(url) for url in url_list):
+                    bulk_results = process_bulk_urls(url_list)
+                    # Store results in session state and display
+                    st.session_state['bulk_results'] = bulk_results
+                else:
+                    st.error("The file must contain valid URLs, each on a new line.")
+            except Exception as e:
+                st.error(f"Error processing file: {e}")
+        else:
+            st.error("Please upload a .txt file.")
+            
 # Web Text Extractor section
 with url_section:
     url = st.text_input('Enter URL of the website')
@@ -61,12 +55,16 @@ with url_section:
         if url and is_valid_url(url):
             try:
                 extracted_text = extract_text_from_url(url)
-                st.session_state['input_text'] = extracted_text
-                facts_op = get_atomic_facts.main(extracted_text, model)
-                clean_results, search_dicts = get_clean_safe_results(facts_op, model)
-                st.session_state['output_text'] = (clean_results, search_dicts)
-                st.experimental_rerun()
-                logging.info("Text extracted and processed successfully.")
+                if extracted_text:
+                    filtered_text = filter_advertisements(extracted_text)
+                    st.session_state['input_text'] = filtered_text
+                    facts_op = get_atomic_facts.main(filtered_text, model)
+                    clean_results, search_dicts = get_clean_safe_results(facts_op, model)
+                    st.session_state['output_text'] = (clean_results, search_dicts)
+                    st.experimental_rerun()
+                    logging.info("Text extracted and processed successfully.")
+                else:
+                    st.error('Failed to extract text from the provided URL.')
             except Exception as e:
                 logging.error(f"Failed to extract or process text: {e}")
                 st.error('Failed to extract or process text')
@@ -115,8 +113,10 @@ if 'output_text' in st.session_state and 'input_text' in st.session_state:
 
 elif 'bulk_results' in st.session_state:
     # Display detailed facts and statistics for each URL
-    for url, clean_results, search_dicts in bulk_results:
+    for url, extracted_text, clean_results, search_dicts in bulk_results:
         st.subheader(f'Results for URL: {url}')
+        st.header('Input Text')
+        st.text_area('Extracted Text', extracted_text, height=150)
         facts_df = pd.DataFrame(list(clean_results.items()), columns=['Fact', 'Support'])
         search_df = pd.DataFrame(list(search_dicts.items()), columns=['Fact', 'Search Results'])
         search_df['Search Results'] = search_df['Search Results'].apply(lambda x: ', '.join([f"Query: {res['query']}, Result: {res['result']}" for res in x]))

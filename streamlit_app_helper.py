@@ -1,6 +1,6 @@
 import logging
 from urllib.parse import urlparse
-import requests
+from time import sleep
 from bs4 import BeautifulSoup
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -9,10 +9,23 @@ from common.shared_config import openai_api_key
 from common.shared_config import serper_api_key
 from eval.safe.rate_atomic_fact import check_atomic_fact
 from eval.safe.classify_relevance import revise_fact
-import langfun as lf
+from eval.safe import get_atomic_facts
+from common.modeling import Model
+import json
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Initialize the model
+model_name = "openai:gpt-3.5-turbo"
+model = Model(model_name=model_name, temperature=0.7, max_tokens=150)
 
 def clean_text(text):
     try:
@@ -26,46 +39,86 @@ def clean_text(text):
         logging.error(f"Failed to clean text: {e}")
         return text
 
-def extract_text_from_url(url):
-    try:
-        response = requests.get(url)
-        # Check if the request was successful
-        if response.status_code != 200:
-            logging.error(f"Failed to access site: HTTP {response.status_code}")
-            return "Site cannot be accessed"
-        
-        soup = BeautifulSoup(response.content, 'html.parser')
-        # Remove tail elements
-        tail_elements = soup.find_all(['aside', 'footer', 'nav', 'section'])
-        for element in tail_elements:
-            element.decompose()
-        
-        # Remove elements with specific classes or ids that are known to be tail elements
-        unwanted_classes = ['more-options', 'more-news', 'also-see', 'related-articles']
-        for unwanted_class in unwanted_classes:
-            for element in soup.find_all(class_=unwanted_class):
-                element.decompose()
-        
-        unwanted_ids = ['more-options', 'more-news', 'also-see', 'related-articles']
-        for unwanted_id in unwanted_ids:
-            for element in soup.find_all(id=unwanted_id):
-                element.decompose()
+def setup_driver():
+    """Setup Chrome driver with necessary options."""
+    capabilities = DesiredCapabilities().CHROME
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")  # Run Chrome in headless mode
+    chrome_options.add_argument("--disable-gpu")  # Disable GPU usage
+    chrome_options.add_argument("--no-sandbox")  # Bypass OS security model
+    chrome_options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
+    chrome_options.add_argument("--incognito")
+    chrome_options.add_argument("--disable-infobars")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--disable-popup-blocking")
+    chrome_options.add_argument("--ignore-certificate-errors")
+    chrome_options.add_experimental_option("useAutomationExtension", False)
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
 
-        # Extract the header (usually in <h1> tag)
-        header = soup.find('h1')
-        header_text = header.get_text(separator=' ') if header else ''
-        # Extract the main content (usually in <p> tags)
-        paragraphs = soup.find_all('p')
+    driver = webdriver.Chrome(options=chrome_options)
+    return driver
+
+def handle_popups(driver):
+    """Handle common pop-ups such as GDPR and subscription prompts."""
+    try:
+        gdpr_accept_button = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.CLASS_NAME, "gdpr-banner__accept"))
+        )
+        ActionChains(driver).move_to_element(gdpr_accept_button).click(gdpr_accept_button).perform()
+    except Exception as e:
+        logging.info(f"No GDPR pop-up found: {e}")
+
+    try:
+        close_news_popup = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.CLASS_NAME, "my-news-landing-popup__icon-close"))
+        )
+        ActionChains(driver).move_to_element(close_news_popup).click(close_news_popup).perform()
+    except Exception as e:
+        logging.info(f"No subscription pop-up found: {e}")
+
+def extract_text_from_url(url):
+    driver = setup_driver()
+    driver.get(url)
+    driver.implicitly_wait(10)
+
+    handle_popups(driver)
+    
+    sleep(5)  # Wait for the page to load
+
+    raw_soup = BeautifulSoup(driver.page_source, 'html.parser')
+    driver.quit()
+
+    # Extract the main article text
+    try:
+        json_dictionaries = raw_soup.find_all(name='script', attrs={'type': 'application/ld+json'})
+        for json_dictionary in json_dictionaries:
+            dictionary = json.loads("".join(json_dictionary.contents), strict=False)
+            if 'articleBody' in dictionary:
+                return dictionary['articleBody']
+    except Exception as e:
+        logging.error(f"Failed to extract article body from JSON: {e}")
+
+    # Fallback to extracting from main content
+    try:
+        article = raw_soup.find('article')
+        if article:
+            return article.get_text(separator=' ')
+        
+        paragraphs = raw_soup.find_all('p')
         main_text = ' '.join([p.get_text(separator=' ') for p in paragraphs])
-        # Combine header and main text
-        full_text = f"{header_text} {main_text}"
-        # Clean the extracted text
-        cleaned_text = clean_text(full_text)
-        logging.info("Text extracted and cleaned from URL.")
-        return cleaned_text
-    except requests.RequestException as e:
-        logging.error(f"Error accessing URL: {e}")
-        return f"Site cannot be accessed: {e}"
+        return main_text
+    except Exception as e:
+        logging.error(f"Failed to extract text from HTML content: {e}")
+        return "Failed to extract article text"
+
+# Filter advertisements
+def filter_advertisements(text):
+    """Filter out advertisement sections from the text."""
+    ad_keywords = ['advertisement', 'sponsored content', 'sponsored post']
+    lines = text.split('\n')
+    filtered_lines = [line for line in lines if not any(ad_keyword in line.lower() for ad_keyword in ad_keywords)]
+    return '\n'.join(filtered_lines)
+
 
 def run_safe(facts_op, model):
     result_dict = defaultdict(dict)
@@ -124,6 +177,29 @@ def process_fact(sentence, atomic_fact, model):
     except Exception as e:
         logging.error(f"Error processing fact {atomic_fact}: {e}")
         return None, None
+
+def process_bulk_urls(url_list):
+    bulk_results = []
+    for url in url_list:
+        if is_valid_url(url):
+            try:
+                extracted_text = extract_text_from_url(url)
+                if extracted_text:
+                    filtered_text = filter_advertisements(extracted_text)
+                    facts_op = get_atomic_facts.main(filtered_text, model)
+                    clean_results, search_dicts = get_clean_safe_results(facts_op, model)
+                    bulk_results.append((url, extracted_text, clean_results, search_dicts))
+                    logging.info(f"Processed URL: {url}")
+                else:
+                    logging.error(f"Failed to extract text from URL: {url}")
+                    bulk_results.append((url, "", {}, {}))
+            except Exception as e:
+                logging.error(f"Failed to process URL {url}: {e}")
+                bulk_results.append((url, "", {}, {}))
+        else:
+            logging.warning(f"Invalid URL skipped: {url}")
+            bulk_results.append((url, "", {}, {}))
+    return bulk_results
 
 # Define helper functions
 def is_valid_url(url):
