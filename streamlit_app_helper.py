@@ -11,6 +11,13 @@ from eval.safe.rate_atomic_fact import check_atomic_fact
 from eval.safe.classify_relevance import revise_fact
 from eval.safe import get_atomic_facts
 from common.modeling import Model
+
+from collections import defaultdict
+import os
+import langfun as lf
+from typing import Dict, Any
+from collections import defaultdict
+
 import json
 from selenium import webdriver
 from selenium.webdriver.common.by import By
