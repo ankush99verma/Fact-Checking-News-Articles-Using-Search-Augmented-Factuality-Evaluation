@@ -79,7 +79,7 @@ show_responder_responses = False
 ################################################################################
 task_short = 'longfact_objects'
 shuffle_data = True
-max_num_examples = 250
+max_num_examples = 2
 add_universal_postamble = True
 
 ################################################################################

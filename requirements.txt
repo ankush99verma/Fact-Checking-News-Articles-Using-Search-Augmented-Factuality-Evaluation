@@ -112,3 +112,6 @@ urllib3==2.2.0
 wasabi==1.1.2
 weasel==0.3.4
 yarl==1.9.4
+selenium=4.22.0
+bs4=0.0.2
+streamlit=1.36.0
