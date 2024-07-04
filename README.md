@@ -38,16 +38,15 @@ pip install -r requirements.txt
 ## How to run
 To Run the streamlit application:
 
-- Copy-paste OpenAI, Serper API keys in shared_config.py withing common
-- run following command 
-
+- Copy-paste OpenAI, Serper API keys in shared_config.py located in `common/`
+- run following command in the root directory to start the web application: 
 ```bash
 streamlit run streamlit_app.py
 ```
 
 ## Usage
 
-The Real-Time Fact Check Application is a web-based tool designed to verify the accuracy of information in news articles and other textual content. Utilizing a method which we call Search-Augmented Factuality Evaluator SAFE, the application automates the extraction and analysis of smaller constituent facts in the given input fact which we call atomic facts from provided text.
+The Real-Time Fact Check Application is a web-based tool designed to verify the accuracy of information in news articles and other textual content. Utilizing a method called Search-Augmented Factuality Evaluator (SAFE), the application automates the extraction and analysis of smaller constituent facts in the given input fact which are known as atomic facts.
 Key features include:
 - URL-Based Text Extraction: Extracts and cleans main content from news articles, filtering out advertisements, sponsorships, and irrelevant sections.
 - Text Input Processing: Allows direct text input for fact-checking.
