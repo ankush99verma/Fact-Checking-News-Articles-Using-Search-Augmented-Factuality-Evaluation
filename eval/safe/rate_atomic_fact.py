@@ -29,6 +29,8 @@ import requests
 import time
 
 from eval.safe.query_bing import BingSearch
+from typing import Dict, List, Optional
+from eval.safe.search_results import GoogleSearchResult, SearchResultMetadata
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -80,14 +82,11 @@ STATEMENT:
 """
 
 @dataclasses.dataclass()
-class GoogleSearchResult:
-  query: str
-  result: str
-
-@dataclasses.dataclass()
 class FinalAnswer:
   response: str
   answer: str
+  metadata: Optional[SearchResultMetadata] = None  # Maps ID to metadata
+
 
 def call_search(
     search_query: str,
@@ -95,7 +94,7 @@ def call_search(
     num_searches: int = safe_config.num_searches,
     serper_api_key: str = shared_config.serper_api_key,
     search_postamble: str = '',  # ex: 'site:https://en.wikipedia.org'
-) -> str:
+) -> GoogleSearchResult:
   """Call Google Search to get the search result."""
   search_query += f' {search_postamble}' if search_postamble else ''
   logging.info(f"Calling search with query: {search_query}")
@@ -121,7 +120,7 @@ def maybe_get_next_search(
     debug: bool = safe_config.debug_safe,
 ) -> GoogleSearchResult | None:
   """Get the next query from the model."""
-  knowledge = '\n'.join([s.result for s in past_searches])
+  knowledge = '\n'.join([str(s.result) for s in past_searches if isinstance(s, GoogleSearchResult) and hasattr(s, 'result')])
   knowledge = 'N/A' if not knowledge else knowledge
   full_prompt = _NEXT_SEARCH_FORMAT.replace(_STATEMENT_PLACEHOLDER, atomic_fact)
   full_prompt = full_prompt.replace(_KNOWLEDGE_PLACEHOLDER, knowledge)
@@ -133,7 +132,8 @@ def maybe_get_next_search(
 
   if model_response and query:
     logging.info(f"Generated query: {query}")
-    return GoogleSearchResult(query=query, result=call_search(query))
+    result = call_search(query)
+    return GoogleSearchResult(query=query, result=result, metadata=result.metadata)
   else:
     logging.warning("Failed to generate a valid query.")
     return None
@@ -145,7 +145,9 @@ def maybe_get_final_answer(
     debug: bool = safe_config.debug_safe,
 ) -> FinalAnswer | None:
   """Get the final answer from the model."""
-  knowledge = '\n'.join([search.result for search in searches])
+  #knowledge = '\n'.join([search.result for search in searches])
+  knowledge = '\n'.join([str(search.result) for search in searches if isinstance(search, GoogleSearchResult) and hasattr(search, 'result')])
+
   full_prompt = _FINAL_ANSWER_FORMAT.replace(
       _STATEMENT_PLACEHOLDER, atomic_fact
   )
@@ -159,7 +161,7 @@ def maybe_get_final_answer(
 
   if model_response and answer in [SUPPORTED_LABEL, NOT_SUPPORTED_LABEL]:
     logging.info(f"Determined final answer: {answer}")
-    return FinalAnswer(response=model_response, answer=answer)
+    return FinalAnswer(response=model_response, answer=answer, metadata=searches[0].metadata)
   else:
     logging.error("Failed to determine a conclusive final answer.")
     return None
